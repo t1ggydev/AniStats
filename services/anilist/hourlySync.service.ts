@@ -48,7 +48,7 @@ export async function runHourlyAniListSync(options: { maxItems?: number } = {}) 
     )
 
     for (const m of media) {
-      if (m.updatedAt <= lastUpdatedAt) {
+      if (m.updatedAt < lastUpdatedAt) {
         console.log(
           `[AniList Sync] reached already-synced anime (id=${m.id}) → stop`
         )

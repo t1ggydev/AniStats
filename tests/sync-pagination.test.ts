@@ -32,4 +32,10 @@ describe('incremental sync pagination', () => {
     expect(checkpoint).not.toHaveBeenCalled();
     expect(sync).toHaveBeenCalledTimes(1);
   });
+  it('replays timestamp ties at an imported checkpoint without moving it backwards', async () => {
+    discover.mockResolvedValueOnce([{id:1,updatedAt:100},{id:2,updatedAt:99}]);sync.mockResolvedValue(false);
+    const result=await runHourlyAniListSync();
+    expect(result).toMatchObject({checked:1,written:0,syncedUntil:100});
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
 });
