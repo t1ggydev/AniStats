@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ held: false, releases: 0, flags: [] as string[] }));
+const state = vi.hoisted(() => ({ held: false, releases: 0, heartbeats: 0, flags: [] as string[] }));
 vi.mock('pg', () => ({ default: { Client: class {
   owns = false;
   on() {}
   async connect() {}
-  async query() { this.owns = !state.held; if (this.owns) state.held = true; return { rows: [{ acquired: this.owns }] }; }
+  async query(sql: any) { if (sql?.text === 'SELECT 1') { state.heartbeats++; return {rows:[]}; } this.owns = !state.held; if (this.owns) state.held = true; return { rows: [{ acquired: this.owns }] }; }
   async end() { if (this.owns) { state.held = false; state.releases++; } }
 } } }));
 vi.mock('../utils/prisma', () => ({ prisma: { syncState: {
@@ -27,5 +27,13 @@ describe('database-owned sync exclusion', () => {
     });
     expect(state.flags).toEqual(['1', '0']);
     expect(state.releases).toBe(1);
+  });
+  it('keeps the lock connection active beyond the private proxy idle timeout and clears its timer', async () => {
+    vi.useFakeTimers();state.heartbeats=0;
+    try {
+      await withAniListSyncLock(async assertHeld => { await vi.advanceTimersByTimeAsync(80000); assertHeld(); expect(state.heartbeats).toBe(4); });
+      await vi.advanceTimersByTimeAsync(40000);
+      expect(state.heartbeats).toBe(4);
+    } finally { vi.useRealTimers(); }
   });
 });
