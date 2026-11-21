@@ -81,18 +81,21 @@ export async function runHourlyAniListSync(options: { maxItems?: number } = {}) 
     page++
   }
 
-  if (!partial && newestSeen > lastUpdatedAt) {
+  // Retain a one-second overlap: new records can acquire the same provider
+  // timestamp while pagination is in progress. Hashes make replay harmless.
+  const completedCheckpoint = Math.max(lastUpdatedAt, newestSeen - 1)
+  if (!partial && completedCheckpoint > lastUpdatedAt) {
     await prisma.syncState.upsert({
       where: { key: "anilist_last_updated_at" },
-      update: { value: String(newestSeen) },
+      update: { value: String(completedCheckpoint) },
       create: {
         key: "anilist_last_updated_at",
-        value: String(newestSeen),
+        value: String(completedCheckpoint),
       },
     })
 
     console.log(
-      `[AniList Sync] updated syncState → ${newestSeen}`
+      `[AniList Sync] updated syncState → ${completedCheckpoint}`
     )
   }
 
@@ -101,7 +104,7 @@ export async function runHourlyAniListSync(options: { maxItems?: number } = {}) 
   )
 
   return {
-    syncedUntil: partial ? lastUpdatedAt : newestSeen,
+    syncedUntil: partial ? lastUpdatedAt : completedCheckpoint,
     observedUntil: newestSeen,
     partial,
     previous: lastUpdatedAt,

@@ -14,9 +14,9 @@ describe('incremental sync pagination', () => {
       .mockResolvedValueOnce([{ id: 2, updatedAt: 200 }, { id: 3, updatedAt: 90 }]);
     sync.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     const out = await runHourlyAniListSync();
-    expect(out).toMatchObject({ checked: 2, written: 1, syncedUntil: 300 });
+    expect(out).toMatchObject({ checked: 2, written: 1, syncedUntil: 299 });
     expect(sync.mock.calls.map(row => row[0])).toEqual([1, 2]);
-    expect(checkpoint).toHaveBeenCalledWith(expect.objectContaining({ update: { value: '300' } }));
+    expect(checkpoint).toHaveBeenCalledWith(expect.objectContaining({ update: { value: '299' } }));
   });
   it('keeps the checkpoint unchanged when a page fails', async () => {
     discover.mockResolvedValueOnce([{ id: 1, updatedAt: 300 }]).mockRejectedValueOnce(new Error('network unavailable'));
