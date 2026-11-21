@@ -10,7 +10,10 @@ ENV NITRO_PRESET=node-server NUXT_TELEMETRY_DISABLED=1
 RUN NODE_ENV=production npm run build
 
 FROM build AS verify
-RUN npx nuxt prepare && npm run test:run && npm run test:frontend:run && npm run test:perf
+RUN mkdir /reports && npx nuxt prepare \
+    && npm run test:run -- --reporter=default --reporter=junit --outputFile=/reports/backend.xml \
+    && npm run test:frontend:run -- --reporter=default --reporter=junit --outputFile=/reports/frontend.xml \
+    && npm run test:perf -- --reporter=junit --outputFile=/reports/performance.xml
 
 FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000

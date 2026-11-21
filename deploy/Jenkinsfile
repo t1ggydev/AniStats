@@ -1,0 +1,77 @@
+def publishAniStatsStatus(String state) {
+  try {
+    withCredentials([string(credentialsId: 'anistats-github-status', variable: 'ANISTATS_GITHUB_TOKEN')]) {
+      sh "python3 deploy/ci/github-status.py ${state}"
+    }
+  } catch (Exception ignored) {
+    echo 'GitHub status credential is missing or rejected; build results remain available in Jenkins.'
+  }
+}
+
+pipeline {
+  agent { label 'koipond-build' }
+  options { skipDefaultCheckout(true); disableConcurrentBuilds(); timeout(time: 60, unit: 'MINUTES'); timestamps(); buildDiscarder(logRotator(numToKeepStr: '20')) }
+  triggers { pollSCM('H/5 * * * *') }
+  stages {
+    stage('Pin exact source') {
+      steps {
+        script {
+          def source = checkout scm
+          if (!(source.GIT_COMMIT ==~ /^[a-f0-9]{40}$/)) error('Exact SCM revision required')
+          env.ANISTATS_SOURCE_SHA = source.GIT_COMMIT
+          publishAniStatsStatus('pending')
+        }
+      }
+    }
+    stage('Build and test through existing Ansible') {
+      steps {
+        sh '''
+          set -eu
+          case "$ANISTATS_SOURCE_SHA" in ''|*[!a-f0-9]*) exit 1;; esac
+          test "${#ANISTATS_SOURCE_SHA}" -eq 40
+          case "$BUILD_TAG" in ''|*[!A-Za-z0-9_.-]*) exit 1;; esac
+          ssh -T -i /var/lib/jenkins-agent/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            jenkins-ci@10.1.0.101 "bash -se -- $ANISTATS_SOURCE_SHA $BUILD_TAG" <<'ANISTATS'
+          set -euo pipefail
+          umask 077
+          revision="$1"; run_id="$2"
+          root=/home/jenkins-ci/anistats-preparation
+          mkdir -p "$root/artifacts/$run_id"
+          exec 9>"$root/ci.lock"
+          flock -w 1800 9
+          if ! test -d "$root/repo/.git"; then git clone https://github.com/t1ggydev/AniStats.git "$root/repo"; fi
+          cd "$root/repo"
+          test -z "$(git status --porcelain)"
+          git fetch --no-tags origin "$revision"
+          test "$(git rev-parse FETCH_HEAD)" = "$revision"
+          git checkout --detach "$revision"
+          archive="$root/artifacts/anistats-$revision.tar.gz"
+          git archive --format=tar.gz --output="$archive" "$revision"
+          ansible-playbook -i deploy/ci/inventory.ini deploy/ci/build.yml \
+            -e "revision=$revision" -e "run_id=$run_id" -e "archive=$archive"
+          ANISTATS
+        '''.stripIndent(10)
+      }
+    }
+    stage('Archive exact test and release evidence') {
+      steps {
+        sh '''
+          set -eu
+          mkdir -p reports
+          for name in backend.xml frontend.xml performance.xml release.json; do
+            scp -i /var/lib/jenkins-agent/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              "jenkins-ci@10.1.0.101:/home/jenkins-ci/anistats-preparation/artifacts/$BUILD_TAG/$name" "reports/$name"
+          done
+        '''
+        junit 'reports/*.xml'
+        archiveArtifacts artifacts: 'reports/*', fingerprint: true
+      }
+    }
+  }
+  post {
+    success { script { publishAniStatsStatus('success') } }
+    failure { script { if (env.ANISTATS_SOURCE_SHA) publishAniStatsStatus('failure') } }
+    aborted { script { if (env.ANISTATS_SOURCE_SHA) publishAniStatsStatus('error') } }
+    always { echo 'Build only. No deployment, database migration, DNS change or production switch.' }
+  }
+}
