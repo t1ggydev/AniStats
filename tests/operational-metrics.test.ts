@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 describe('operational histogram generations', () => {
+  it('keeps long background jobs and probes out of interactive HTTP latency', async () => {
+    const {shouldObserveHttp}=await import('../server/utils/operationalMetrics');
+    for (const path of ['/api/internal/full-sync','/api/internal/metrics','/api/cron/anilist-sync','/api/public/health']) expect(shouldObserveHttp(path)).toBe(false);
+    for (const path of ['/','/api/auth/callback','/api/anime','/dashboard']) expect(shouldObserveHttp(path)).toBe(true);
+  });
   it('keeps buckets monotonic, separates restarts, and exports no URL/user data', async () => {
     vi.resetModules();
     const first = await import('../server/utils/operationalMetrics');

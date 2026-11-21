@@ -6,6 +6,9 @@ const limits = [.005,.01,.025,.05,.1,.25,.5,1,2.5,5,10,30,60,120,300,Infinity];
 const buckets = limits.map(() => 0);
 const requests = new Map<string,number>();
 let count = 0, sum = 0;
+export function shouldObserveHttp(path: string) {
+  return !path.startsWith('/api/internal/') && !path.startsWith('/api/cron/') && !path.startsWith('/api/public/health');
+}
 export function observeRequest(method: string, status: number, seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return;
   const safeMethod = ['GET','POST','PUT','PATCH','DELETE','OPTIONS','HEAD'].includes(method) ? method : 'OTHER';
