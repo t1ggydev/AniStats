@@ -2,11 +2,9 @@ import { prisma } from "../../utils/prisma";
 import { anilistRequest } from "./anilistClient";
 import crypto from "crypto";
 
-const ANILIST_REQUEST_DELAY_MS = 300;
 
-const QUERY = `
-query FullAnime($id: Int!) {
-  Media(id: $id, type: ANIME) {
+
+export const FULL_ANIME_FIELDS = `
     id
     title {
       romaji
@@ -48,9 +46,8 @@ query FullAnime($id: Int!) {
         }
       }
     }
-  }
-}
 `;
+const QUERY = `query FullAnime($id: Int!) { Media(id: $id, type: ANIME) { ${FULL_ANIME_FIELDS} } }`;
 
 type FuzzyDate = {
   year: number | null;
@@ -58,7 +55,7 @@ type FuzzyDate = {
   day: number | null;
 };
 
-type FullAnimeResponse = {
+export type FullAnimeResponse = {
   Media: {
     id: number;
     title: {
@@ -122,6 +119,10 @@ export async function syncAnime(anilistId: number) {
     id: anilistId,
   });
 
+  return applyAnimeSnapshot(Media);
+}
+
+export async function applyAnimeSnapshot(Media: FullAnimeResponse["Media"]) {
   const dataHash = hashAnime(Media);
 
   const changed = await prisma.$transaction(async (tx) => {
@@ -266,6 +267,6 @@ export async function syncAnime(anilistId: number) {
   }, { timeout: 15000 });
 
   // Rate delay is outside the transaction: do not hold database locks while sleeping.
-  await new Promise((r) => setTimeout(r, ANILIST_REQUEST_DELAY_MS));
+
   return changed;
 }

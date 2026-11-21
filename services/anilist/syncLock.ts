@@ -9,6 +9,7 @@ export async function withAniListSyncLock<T>(work: (assertHeld: () => void) => P
     connectionTimeoutMillis: 5000, application_name: 'anistats-sync-lock' });
   let connectionLost = false;
   let acquired = false;
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
   connection.on('error', () => { connectionLost = true; });
   const assertHeld = () => { if (connectionLost) throw new Error('Sync lock connection lost'); };
   try {
@@ -16,6 +17,9 @@ export async function withAniListSyncLock<T>(work: (assertHeld: () => void) => P
     const result = await connection.query('SELECT pg_try_advisory_lock(734102617, 1) AS acquired');
     acquired = result.rows[0].acquired === true;
     if (!acquired) throw createError({ statusCode: 409, statusMessage: 'AniList sync already running' });
+    heartbeat = setInterval(() => {
+      void connection.query({ text: 'SELECT 1', query_timeout: 10000 }).catch(() => { connectionLost = true; });
+    }, 20000);
     await prisma.syncState.upsert({ where: { key: 'anilist_sync_running' },
       update: { value: '1' }, create: { key: 'anilist_sync_running', value: '1' } });
     try { return await work(assertHeld); }
@@ -24,6 +28,7 @@ export async function withAniListSyncLock<T>(work: (assertHeld: () => void) => P
     }
   } finally {
     // Closing this dedicated connection releases the session lock, including on errors.
+    if (heartbeat) clearInterval(heartbeat);
     await connection.end();
   }
 }

@@ -29,6 +29,7 @@ export async function runHourlyAniListSync(options: { maxItems?: number } = {}) 
 
   while (!stop) {
     assertHeld()
+    if (page > 100) throw new Error('AniList page depth exhausted; full catch-up required; checkpoint unchanged')
     console.log(`[AniList Sync] fetching page=${page}`)
 
     const media = await discoverNewAnime(page, PER_PAGE)
