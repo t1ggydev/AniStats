@@ -12,7 +12,7 @@ type DiscoverResponse = {
 const QUERY = `
 query DiscoverAnime($page: Int!, $perPage: Int!) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, sort: ID_DESC) {
+    media(type: ANIME, sort: UPDATED_AT_DESC) {
       id
       updatedAt
     }

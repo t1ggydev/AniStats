@@ -1,4 +1,9 @@
 {
+    "git": {
+        "deploymentEnabled": {
+            "codex/anistats-self-hosting": false
+        }
+    },
     "crons": [
         {
             "path": "/api/cron/anilist-sync",

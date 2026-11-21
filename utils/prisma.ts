@@ -1,10 +1,8 @@
 import "dotenv/config"
 import { PrismaClient } from "@prisma/client"
-import { PrismaLibSql } from "@prisma/adapter-libsql"
+import { PrismaPg } from "@prisma/adapter-pg"
 
-const adapter = new PrismaLibSql({
-  url: process.env.DATABASE_URL!,
-  authToken: process.env.DATABASE_AUTH_TOKEN!,
-})
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 5,
+  connectionTimeoutMillis: 5000, idleTimeoutMillis: 30000 })
 
 export const prisma = new PrismaClient({ adapter })

@@ -6,9 +6,10 @@ import { defineConfig } from "prisma/config";
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
-    path: "prisma/migrations",
+    // Preserve the legacy SQLite migration history separately; never replay it on PostgreSQL.
+    path: "prisma/migrations-postgresql",
   },
   datasource: {
-    url: "file:./prisma/dev.db",
+    url: process.env.DATABASE_URL || "postgresql://build:build@127.0.0.1:5432/anistats_build",
   },
 });

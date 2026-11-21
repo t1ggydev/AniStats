@@ -1,5 +1,5 @@
 import { inject } from "@vercel/analytics";
 
 export default defineNuxtPlugin(() => {
-  inject({ framework: "nuxt" });
+  if (useRuntimeConfig().public.vercelAnalytics) inject({ framework: "nuxt" });
 });
