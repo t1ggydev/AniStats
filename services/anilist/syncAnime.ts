@@ -122,7 +122,17 @@ export async function syncAnime(anilistId: number) {
   return applyAnimeSnapshot(Media);
 }
 
-export async function applyAnimeSnapshot(Media: FullAnimeResponse["Media"]) {
+export function normalizeAnimeSnapshot(input: FullAnimeResponse["Media"]): FullAnimeResponse["Media"] {
+  return {
+    ...input,
+    genres: [...new Set(input.genres)],
+    tags: [...new Map(input.tags.map(tag => [tag.id, tag])).values()],
+    relations: { edges: [...new Map(input.relations.edges.map(edge => [edge.node.id+':'+edge.relationType, edge])).values()] },
+  };
+}
+
+export async function applyAnimeSnapshot(input: FullAnimeResponse["Media"]) {
+  const Media = normalizeAnimeSnapshot(input);
   const dataHash = hashAnime(Media);
 
   const changed = await prisma.$transaction(async (tx) => {
@@ -231,7 +241,7 @@ export async function applyAnimeSnapshot(Media: FullAnimeResponse["Media"]) {
   });
 
   // Ziel-IDs sammeln
-  const targetIds = Media.relations.edges.map((e) => e.node.id);
+  const targetIds = [...new Set(Media.relations.edges.map((e) => e.node.id))];
 
   if (targetIds.length > 0) {
     // 🔹 prüfen, welche Anime bereits existieren
