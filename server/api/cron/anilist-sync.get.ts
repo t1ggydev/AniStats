@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, getHeader } from "h3";
-import { runHourlyAniListSync } from "../../../services/anilist/hourlySync.service";
+import { runFullAniListSync } from "../../../services/anilist/fullSync.service";
 
 export default defineEventHandler(async (event) => {
   const cronSecret = process.env.CRON_SECRET;
@@ -12,5 +12,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 503, statusMessage: "Scheduled sync is not configured" });
   }
 
-  return runHourlyAniListSync();
+  return runFullAniListSync({ reuseRecent: true });
 });

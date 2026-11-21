@@ -24,8 +24,8 @@ vi.mock("../utils/prisma", () => ({
   },
 }))
 
-vi.mock("../services/anilist/hourlySync.service", () => ({
-  runHourlyAniListSync: runHourlyAniListSyncMock,
+vi.mock("../services/anilist/fullSync.service", () => ({
+  runFullAniListSync: runHourlyAniListSyncMock,
 }))
 
 describe("api/cron/anilist-sync.get", () => {

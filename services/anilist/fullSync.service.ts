@@ -3,7 +3,7 @@ import { anilistRequest } from './anilistClient';
 import { applyAnimeSnapshot, FULL_ANIME_FIELDS, type FullAnimeResponse } from './syncAnime';
 import { withAniListSyncLock } from './syncLock';
 
-type Progress = { version: 1; watermark: number; bins: [number, number][]; page: number; checked: number; written: number; completed?: boolean };
+type Progress = { version: 1; watermark: number; bins: [number, number][]; page: number; checked: number; written: number; completed?: boolean; completedAt?: number };
 const KEY = 'anilist_full_sync_progress';
 function pageQuery(lo: number, hi: number, probe: boolean) {
   // AniList rejects comparison operators with null operands: omit those filters.
@@ -15,10 +15,17 @@ type PageResponse = { Page: { pageInfo: { hasNextPage: boolean }; media: FullAni
 
 // Date partitions avoid AniList's hard 5,000-entry pagination boundary.
 // A page is committed before its cursor: replay following interruption is idempotent.
-export async function runFullAniListSync() {
+export async function runFullAniListSync(options: { reuseRecent?: boolean } = {}) {
   return withAniListSyncLock(async assertHeld => {
     const stored = await prisma.syncState.findUnique({ where: { key: KEY } });
     let progress: Progress | undefined = stored ? JSON.parse(stored.value) : undefined;
+    // A timer/manual retry immediately after an accepted refresh need not scan
+    // the whole catalog again. Reuse only after checking the provider watermark.
+    if (options.reuseRecent && progress?.completed && progress.completedAt && Date.now()/1000-progress.completedAt < 300) {
+      const current = await anilistRequest<{Page:{media:{updatedAt:number}[]}}>(
+        'query { Page(page:1,perPage:1) { media(type:ANIME,sort:UPDATED_AT_DESC) { updatedAt } } }', {});
+      if (current.Page.media[0]!.updatedAt <= progress.watermark+1) return {...progress,reused:true};
+    }
     if (!progress || progress.completed) {
       const newest = await anilistRequest<{ Page: { media: { updatedAt: number }[] } }>(
         'query { Page(page:1,perPage:1) { media(type:ANIME,sort:UPDATED_AT_DESC) { updatedAt } } }', {});
@@ -72,6 +79,7 @@ export async function runFullAniListSync() {
     assertHeld();
     await prisma.syncState.upsert({ where: { key: 'anilist_last_updated_at' }, update: { value: String(progress.watermark) }, create: { key: 'anilist_last_updated_at', value: String(progress.watermark) } });
     progress.completed = true;
+    progress.completedAt = Date.now()/1000;
     await persist();
     return progress;
   });
