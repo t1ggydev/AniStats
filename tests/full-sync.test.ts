@@ -18,7 +18,8 @@ describe('resumable full catch-up',()=>{
     const result=await runFullAniListSync();
     expect(result).toMatchObject({completed:true,checked:2,written:2});
     expect(mock.states.get('anilist_last_updated_at')).toBe('299');
-    expect(mock.request.mock.calls[2][1]).toEqual({lo:null,hi:50000000});
+    expect(mock.request.mock.calls[2][1]).toEqual({lo:null,hi:50000000,page:100});
+    expect(mock.request.mock.calls[2][0]).not.toContain('startDate_greater');
   });
   it('replays an interrupted page without advancing the global checkpoint',async()=>{
     mock.request.mockResolvedValueOnce({Page:{media:[{updatedAt:300}]}}).mockResolvedValueOnce(page([])).mockResolvedValueOnce(page([1,2]));

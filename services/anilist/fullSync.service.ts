@@ -5,9 +5,12 @@ import { withAniListSyncLock } from './syncLock';
 
 type Progress = { version: 1; watermark: number; bins: [number, number][]; page: number; checked: number; written: number; completed?: boolean };
 const KEY = 'anilist_full_sync_progress';
-const QUERY = `query FullPage($page:Int!,$lo:FuzzyDateInt,$hi:FuzzyDateInt) {
-  Page(page:$page,perPage:50) { pageInfo { hasNextPage } media(type:ANIME,startDate_greater:$lo,startDate_lesser:$hi,sort:ID) { ${FULL_ANIME_FIELDS} } }
-}`;
+function pageQuery(lo: number, hi: number, probe: boolean) {
+  // AniList rejects comparison operators with null operands: omit those filters.
+  const declarations = ['$page:Int!', ...(lo ? ['$lo:FuzzyDateInt!'] : []), ...(hi < 100000000 ? ['$hi:FuzzyDateInt!'] : [])];
+  const filters = ['type:ANIME', 'sort:ID', ...(lo ? ['startDate_greater:$lo'] : []), ...(hi < 100000000 ? ['startDate_lesser:$hi'] : [])];
+  return `query FullPage(${declarations.join(',')}) { Page(page:$page,perPage:50) { pageInfo { hasNextPage } media(${filters.join(',')}) { ${probe ? 'id' : FULL_ANIME_FIELDS} } } }`;
+}
 type PageResponse = { Page: { pageInfo: { hasNextPage: boolean }; media: FullAnimeResponse['Media'][] } };
 
 // Date partitions avoid AniList's hard 5,000-entry pagination boundary.
@@ -34,7 +37,7 @@ export async function runFullAniListSync() {
       const variables = { lo: lo === 0 ? null : lo - 1, hi: hi === 100000000 ? null : hi };
       if (progress.page === 1) {
         const probe = await anilistRequest<{ Page: { pageInfo: { hasNextPage: boolean } } }>(
-          'query($lo:FuzzyDateInt,$hi:FuzzyDateInt){Page(page:100,perPage:50){pageInfo{hasNextPage} media(type:ANIME,startDate_greater:$lo,startDate_lesser:$hi,sort:ID){id}}}', variables);
+          pageQuery(lo, hi, true), { ...variables, page: 100 });
         if (probe.Page.pageInfo.hasNextPage) {
           if (hi - lo < 2) throw new Error('Unsplittable date partition exceeds provider depth');
           const mid = Math.floor((lo + hi) / 2);
@@ -44,7 +47,7 @@ export async function runFullAniListSync() {
         }
       }
       if (progress.page > 100) throw new Error('Date partition grew beyond provider depth; checkpoint unchanged');
-      const result = await anilistRequest<PageResponse>(QUERY, { ...variables, page: progress.page });
+      const result = await anilistRequest<PageResponse>(pageQuery(lo, hi, false), { ...variables, page: progress.page });
       for (const media of result.Page.media) {
         assertHeld();
         if (await applyAnimeSnapshot(media)) progress.written++;
