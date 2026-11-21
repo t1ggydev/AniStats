@@ -14,7 +14,7 @@ describe('resumable full catch-up',()=>{
   it('splits deep partitions and only commits the captured watermark after completion',async()=>{
     mock.request.mockResolvedValueOnce({Page:{media:[{updatedAt:300}]}})
       .mockResolvedValueOnce(page([],true)).mockResolvedValueOnce(page([])).mockResolvedValueOnce(page([1]))
-      .mockResolvedValueOnce(page([])).mockResolvedValueOnce(page([2]));
+      .mockResolvedValueOnce(page([])).mockResolvedValueOnce(page([2])).mockResolvedValueOnce({GenreCollection:[],MediaTagCollection:[]});
     const result=await runFullAniListSync();
     expect(result).toMatchObject({completed:true,checked:2,written:2});
     expect(mock.states.get('anilist_last_updated_at')).toBe('299');
@@ -26,7 +26,7 @@ describe('resumable full catch-up',()=>{
     await expect(runFullAniListSync()).rejects.toThrow('database offline');
     expect(mock.states.get('anilist_last_updated_at')).toBe('100');
     expect(JSON.parse(mock.states.get('anilist_full_sync_progress')!)).toMatchObject({page:1,checked:0});
-    mock.request.mockResolvedValueOnce(page([])).mockResolvedValueOnce(page([1,2]));mock.write.mockResolvedValue(true);
+    mock.request.mockResolvedValueOnce(page([])).mockResolvedValueOnce(page([1,2])).mockResolvedValueOnce({GenreCollection:[],MediaTagCollection:[]});mock.write.mockResolvedValue(true);
     expect(await runFullAniListSync()).toMatchObject({checked:2,completed:true});
     expect(mock.states.get('anilist_last_updated_at')).toBe('299');
   });

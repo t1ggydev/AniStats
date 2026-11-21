@@ -55,6 +55,16 @@ export async function runFullAniListSync() {
       await persist();
       console.log(`[AniList full] checked=${progress.checked} written=${progress.written} partitions=${progress.bins.length} page=${progress.page}`);
     }
+    const collections = await anilistRequest<{ GenreCollection: string[]; MediaTagCollection: {id:number;name:string;description:string;category:string;rank:number|null;isAdult:boolean}[] }>(
+      'query { GenreCollection MediaTagCollection { id name description category rank isAdult } }', {});
+    for (const name of collections.GenreCollection) {
+      assertHeld();
+      await prisma.genre.upsert({where:{name},update:{},create:{name}});
+    }
+    for (const tag of collections.MediaTagCollection) {
+      assertHeld();
+      await prisma.tag.upsert({where:{id:tag.id},update:tag,create:tag});
+    }
     // Never advance the global watermark until all partitions succeeded.
     assertHeld();
     await prisma.syncState.upsert({ where: { key: 'anilist_last_updated_at' }, update: { value: String(progress.watermark) }, create: { key: 'anilist_last_updated_at', value: String(progress.watermark) } });
