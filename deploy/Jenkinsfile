@@ -4,6 +4,7 @@ def publishAniStatsStatus(String state) {
       sh "python3 deploy/ci/github-status.py ${state}"
     }
   } catch (Exception ignored) {
+    currentBuild.result = 'UNSTABLE'
     echo 'GitHub status credential is missing or rejected; build results remain available in Jenkins.'
   }
 }

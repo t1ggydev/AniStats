@@ -19,8 +19,9 @@ Open the private candidate from an authorized SSH client:
 ssh -N -L 13300:127.0.0.1:3300 apps01
 ```
 
-Then visit `http://localhost:13300`. Staging OAuth is deliberately disabled; it must not redirect users through production while testing a copied database.
-Full OAuth acceptance needs an independent AniList test application/callback, or an explicitly coordinated test of the real hostname routed privately. Do not change the live OAuth application's callback merely to test staging.
+Then visit `http://localhost:13300`. Staging uses a separate AniList test application with callback `http://localhost:13300/api/auth/callback`; it never changes the production OAuth application.
+The owner confirmed the test login, dashboard, history and recommendations on 2026-11-21.
+`outputs/AniStats-Testzugang-oeffnen.ps1` in the operations workspace can re-establish the local forwarding connection.
 
 ## Runtime and builds
 
@@ -34,7 +35,10 @@ Required production runtime values:
 - `NUXT_PUBLIC_SITE_URL`: canonical public URL.
 - `NUXT_ANILIST_CLIENT_ID`, `NUXT_ANILIST_CLIENT_SECRET`, `NUXT_ANILIST_REDIRECT_URI`: runtime Nitro configuration.
 - `CRON_SECRET`: independent random bearer secret. Missing configuration now refuses sync requests.
-- `ANISTATS_AUTH_DISABLED=true` in isolated staging only; remove for accepted production.
+- `ANISTATS_AUTH_DISABLED=true` until a separate test OAuth profile is configured; current staging has its own profile and this flag is false.
+- `ANISTATS_MONITORING_TOKEN`: independent secret for the private aggregate metrics endpoint.
+- `ANISTATS_ENVIRONMENT=stage` in staging; the immutable artifact supports a production label when explicitly promoted later.
+- `ANISTATS_ENABLE_SYNC_TEST=true` only in staging; enables a protected three-item test endpoint.
 
 `DATABASE_AUTH_TOKEN` is no longer a runtime dependency. Turso credentials remain only in the encrypted source recovery archive.
 The preparation branch disables its automatic Vercel deployments. Do not merge this branch into Vercel production before approved cutover: its Prisma provider has changed.
@@ -76,12 +80,36 @@ Discovery now sorts by update timestamp instead of ID, and an unchanged page doe
 Rate-limit retries run outside the occupied request queue, with bounded delay and HTTP request timeouts.
 
 These fixes are tested with injected failures, concurrent requests, unchanged pages, checkpoint failures and simulated HTTP 429 responses.
+The bounded live test processed three entries into PostgreSQL successfully, without advancing the global checkpoint. Metadata/genres/tags/relations now commit together in one transaction and changed entries are counted correctly.
 No full catalog refresh has been started against either production or staging. The initial catch-up must be budgeted and observed against AniList's rate limits before production acceptance.
+
+## Jenkins and operational monitoring
+
+The existing dedicated Jenkins agent runs job `AniStats-Preparation`. It pins the exact commit, builds through the existing Ansible controller, runs Linux backend/frontend/performance checks, and archives JUnit XML plus an immutable image ID/revision record.
+The real GitHub status is `jenkins/anistats`, authenticated with a fine-grained token restricted to this repository. Failure to publish the status marks the build unstable.
+The pipeline polls this preparation branch, retains 20 build records and has no deployment/migration/DNS step. Stage promotion is a separate explicit Ansible operation using the tested image ID/tag.
+
+Grafana dashboard `anistats-stage` is in folder `pve01`: application and database readiness, requests/second, HTTP status classes, 5xx error ratio, p95 latency, individual Docker CPU/RAM, database connections/size, backup/restore freshness and Jenkins results.
+Metrics contain no user IDs, IP addresses, tokens, cookies or request URLs. Health probes and metrics scraping are excluded from HTTP request instrumentation. These are server request measurements, not browser visitor analytics.
+Histogram samples carry process-generation and schema labels; quantile queries select a compatible bucket schema and show no latency value when there are no observations.
+Collectors run every 30 seconds through existing node exporters; no parallel monitoring platform is introduced.
+Native Grafana warnings use the existing Telegram contact point, persistence windows and 24-hour repeats. Missing collectors, service/database failures, failed/stale backups, stale restore/config backups and CI failures are monitored. Failure scenarios are tested offline without sending fake alerts.
+
+## Recurring backups
+
+- Daily 01:30 Europe/Berlin: controller copies an integrity-checked archive of encrypted Vault recovery inputs and public operation sources to `supabase01:/srv/anistats-stage/recovery/`.
+- Daily 01:45 Europe/Berlin: consistent PostgreSQL custom-format dump; retain the latest 14 archive copies.
+- Sunday 01:15 Europe/Berlin: create a dump, restore into a new disposable database and compare all eight tables, including Prisma migration metadata.
+- Each dump and its expected data hashes use the same exported PostgreSQL read snapshot, so legitimate concurrent writes do not create false restore failures.
+- Existing PBS job `pbs-daily-pve01` already includes VM130 (`supabase01`) and VM120 (`apps01`). Its 03:15 schedule is retained. Logical dumps and the encrypted recovery bundle reside inside the backed-up VM filesystem.
+- A simulated dump failure in an isolated fixture retained the old archive and last-success timestamp. It did not modify live backup state.
+
+The Ansible Vault decryption key is deliberately not included alongside encrypted recovery inputs; use the established infrastructure recovery access. No current secret values are stored in repository documentation or Jenkins artifacts.
 
 ## Remaining acceptance and cutover gates
 
-1. Finish isolated candidate acceptance: real AniList OAuth, authenticated analytics screens and an observed sync, including recovery from interruption.
-2. Connect a scoped Jenkins status credential for this repository, immutable release artifacts, service metrics, recurring logical backups and backup freshness checks. These are not yet claimed as complete.
+1. Isolated login and bounded sync acceptance passed; perform and observe the full initial catch-up before production acceptance. Checkpoint progression is deliberately not claimed by the bounded test.
+2. Jenkins, immutable artifacts, request/service/container metrics and recurring backup/restore checks are installed. Preserve their explicit stage/production separation during promotion.
 3. Obtain explicit owner approval for production cutover.
 4. Capture a fresh read-only source snapshot and encrypted rollback configuration. Prepare a separate production database/role; do not silently promote the stale test copy.
 5. Verify initial data, constraints, sequences and consistent backup/restore of the final production copy.

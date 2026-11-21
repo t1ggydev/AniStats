@@ -16,6 +16,7 @@ export function observeRequest(method: string, status: number, seconds: number) 
 }
 export function renderOperationalMetrics() {
   const labels = `application="anistats",environment="${environment}",boot_id="${boot}"`;
+  const histogramLabels = labels+',histogram_schema="v2"';
   // One synchronous snapshot: every histogram bucket/count belongs to the same process generation.
   const lines = [`anistats_process_start_time_seconds{${labels}} ${started}`,
     `anistats_process_resident_memory_bytes{${labels}} ${process.memoryUsage().rss}`];
@@ -23,8 +24,8 @@ export function renderOperationalMetrics() {
     const [method,status] = key.split(':');
     lines.push(`anistats_http_requests_total{${labels},method="${method}",status_class="${status}"} ${value}`);
   }
-  limits.forEach((limit,i) => lines.push(`anistats_http_request_duration_seconds_bucket{${labels},le="${limit===Infinity?'+Inf':limit}"} ${buckets[i]}`));
-  lines.push(`anistats_http_request_duration_seconds_count{${labels}} ${count}`,
-    `anistats_http_request_duration_seconds_sum{${labels}} ${sum}`);
+  limits.forEach((limit,i) => lines.push(`anistats_http_request_duration_seconds_bucket{${histogramLabels},le="${limit===Infinity?'+Inf':limit}"} ${buckets[i]}`));
+  lines.push(`anistats_http_request_duration_seconds_count{${histogramLabels}} ${count}`,
+    `anistats_http_request_duration_seconds_sum{${histogramLabels}} ${sum}`);
   return lines.join('\n')+'\n';
 }
