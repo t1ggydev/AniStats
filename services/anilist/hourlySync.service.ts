@@ -5,7 +5,10 @@ import { withAniListSyncLock } from "./syncLock"
 
 const PER_PAGE = 50
 
-export async function runHourlyAniListSync() {
+export async function runHourlyAniListSync(options: { maxItems?: number } = {}) {
+  if (options.maxItems !== undefined && (!Number.isInteger(options.maxItems) || options.maxItems < 1 || options.maxItems > 3)) {
+    throw new Error('Test sync limit must be between one and three items')
+  }
   return withAniListSyncLock(async (assertHeld) => {
   console.log("[AniList Sync] 🚀 started")
 
@@ -22,6 +25,7 @@ export async function runHourlyAniListSync() {
   let stop = false
   let checked = 0
   let written = 0
+  let partial = false
 
   while (!stop) {
     assertHeld()
@@ -66,12 +70,17 @@ export async function runHourlyAniListSync() {
       if (m.updatedAt > newestSeen) {
         newestSeen = m.updatedAt
       }
+      if (options.maxItems !== undefined && checked >= options.maxItems) {
+        partial = true
+        stop = true
+        break
+      }
     }
 
     page++
   }
 
-  if (newestSeen > lastUpdatedAt) {
+  if (!partial && newestSeen > lastUpdatedAt) {
     await prisma.syncState.upsert({
       where: { key: "anilist_last_updated_at" },
       update: { value: String(newestSeen) },
@@ -91,7 +100,9 @@ export async function runHourlyAniListSync() {
   )
 
   return {
-    syncedUntil: newestSeen,
+    syncedUntil: partial ? lastUpdatedAt : newestSeen,
+    observedUntil: newestSeen,
+    partial,
     previous: lastUpdatedAt,
     checked,
     written,

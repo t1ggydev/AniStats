@@ -110,7 +110,8 @@ function hashAnime(m: FullAnimeResponse["Media"]) {
         endDate: m.endDate,
 
         genres: m.genres,
-        tags: m.tags.map((t) => t.id),
+        tags: [...m.tags].sort((a,b) => a.id-b.id),
+        relations: [...m.relations.edges].sort((a,b) => a.node.id-b.node.id || a.relationType.localeCompare(b.relationType)),
       })
     )
     .digest("hex");
@@ -123,7 +124,9 @@ export async function syncAnime(anilistId: number) {
 
   const dataHash = hashAnime(Media);
 
-  const existing = await prisma.anime.findUnique({
+  const changed = await prisma.$transaction(async (tx) => {
+
+  const existing = await tx.anime.findUnique({
     where: { id: Media.id },
     select: { dataHash: true },
   });
@@ -131,13 +134,13 @@ export async function syncAnime(anilistId: number) {
   // ✅ Skip wenn unverändert
   if (existing?.dataHash === dataHash) {
     console.log(`[AniList Sync] skip unchanged anime id=${Media.id}`);
-    return;
+    return false;
   }
 
   // -----------------------------
   // Anime
   // -----------------------------
-  await prisma.anime.upsert({
+  await tx.anime.upsert({
     where: { id: Media.id },
     update: {
       titleEn: Media.title.english,
@@ -185,12 +188,12 @@ export async function syncAnime(anilistId: number) {
   // -----------------------------
   // Genres
   // -----------------------------
-  await prisma.animeGenre.deleteMany({
+  await tx.animeGenre.deleteMany({
     where: { animeId: Media.id },
   });
 
   if (Media.genres.length > 0) {
-    await prisma.animeGenre.createMany({
+    await tx.animeGenre.createMany({
       data: Media.genres.map((name) => ({
         animeId: Media.id,
         name,
@@ -201,12 +204,12 @@ export async function syncAnime(anilistId: number) {
   // -----------------------------
   // Tags
   // -----------------------------
-  await prisma.animeTag.deleteMany({
+  await tx.animeTag.deleteMany({
     where: { animeId: Media.id },
   });
 
   if (Media.tags.length > 0) {
-    await prisma.animeTag.createMany({
+    await tx.animeTag.createMany({
       data: Media.tags.map((t) => ({
         animeId: Media.id,
         tagId: t.id,
@@ -222,7 +225,7 @@ export async function syncAnime(anilistId: number) {
   // -----------------------------
 
   // Alte Relations löschen
-  await prisma.animeRelation.deleteMany({
+  await tx.animeRelation.deleteMany({
     where: { fromId: Media.id },
   });
 
@@ -231,7 +234,7 @@ export async function syncAnime(anilistId: number) {
 
   if (targetIds.length > 0) {
     // 🔹 prüfen, welche Anime bereits existieren
-    const existing = await prisma.anime.findMany({
+    const existing = await tx.anime.findMany({
       where: { id: { in: targetIds } },
       select: { id: true },
     });
@@ -242,7 +245,7 @@ export async function syncAnime(anilistId: number) {
     const missingIds = targetIds.filter((id) => !existingIds.has(id));
 
     if (missingIds.length > 0) {
-      await prisma.anime.createMany({
+      await tx.anime.createMany({
         data: missingIds.map((id) => ({ id })),
       });
     }
@@ -250,7 +253,7 @@ export async function syncAnime(anilistId: number) {
 
   // Relations schreiben
   if (Media.relations.edges.length > 0) {
-    await prisma.animeRelation.createMany({
+    await tx.animeRelation.createMany({
       data: Media.relations.edges.map((e) => ({
         fromId: Media.id,
         toId: e.node.id,
@@ -259,6 +262,10 @@ export async function syncAnime(anilistId: number) {
     });
   }
 
-  // Mini Rate-Limit Guard
+  return true;
+  }, { timeout: 15000 });
+
+  // Rate delay is outside the transaction: do not hold database locks while sleeping.
   await new Promise((r) => setTimeout(r, ANILIST_REQUEST_DELAY_MS));
+  return changed;
 }

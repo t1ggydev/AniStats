@@ -24,4 +24,12 @@ describe('incremental sync pagination', () => {
     await expect(runHourlyAniListSync()).rejects.toThrow('network unavailable');
     expect(checkpoint).not.toHaveBeenCalled();
   });
+  it('bounds a real staging test without advancing the full-sync checkpoint', async () => {
+    discover.mockResolvedValueOnce([{ id: 1, updatedAt: 300 }, { id: 2, updatedAt: 200 }]);
+    sync.mockResolvedValueOnce(true);
+    const result = await runHourlyAniListSync({ maxItems: 1 });
+    expect(result).toMatchObject({ checked: 1, partial: true, syncedUntil: 100, observedUntil: 300 });
+    expect(checkpoint).not.toHaveBeenCalled();
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
 });
