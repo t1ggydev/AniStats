@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 const boot = randomUUID();
 const started = Date.now()/1000;
-const limits = [.005,.01,.025,.05,.1,.25,.5,1,2.5,5,10,Infinity];
+const environment = process.env.ANISTATS_ENVIRONMENT === 'production' ? 'production' : 'stage';
+const limits = [.005,.01,.025,.05,.1,.25,.5,1,2.5,5,10,30,60,120,300,Infinity];
 const buckets = limits.map(() => 0);
 const requests = new Map<string,number>();
 let count = 0, sum = 0;
@@ -14,7 +15,7 @@ export function observeRequest(method: string, status: number, seconds: number) 
   limits.forEach((limit,i) => { if (seconds<=limit) buckets[i]++; });
 }
 export function renderOperationalMetrics() {
-  const labels = `application="anistats",environment="stage",boot_id="${boot}"`;
+  const labels = `application="anistats",environment="${environment}",boot_id="${boot}"`;
   // One synchronous snapshot: every histogram bucket/count belongs to the same process generation.
   const lines = [`anistats_process_start_time_seconds{${labels}} ${started}`,
     `anistats_process_resident_memory_bytes{${labels}} ${process.memoryUsage().rss}`];

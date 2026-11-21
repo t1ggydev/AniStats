@@ -16,4 +16,10 @@ describe('operational histogram generations', () => {
     expect(restarted).not.toContain(boot);
     expect(restarted).toMatch(/anistats_http_request_duration_seconds_count\{[^}]+\} 0/);
   });
+  it('labels the runtime environment without rebuilding the image', async () => {
+    vi.stubEnv('ANISTATS_ENVIRONMENT','production');vi.resetModules();
+    const metrics=await import('../server/utils/operationalMetrics');
+    expect(metrics.renderOperationalMetrics()).toContain('environment="production"');
+    vi.unstubAllEnvs();
+  });
 });
