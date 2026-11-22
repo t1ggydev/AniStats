@@ -1,0 +1,58 @@
+- name: Build and verify AniStats without deployment or production credentials
+  hosts: anistats_apps
+  gather_facts: false
+  tasks:
+    - ansible.builtin.assert:
+        that:
+          - revision is match('^[a-f0-9]{40}$')
+          - run_id is match('^[A-Za-z0-9_.-]{1,100}$')
+          - archive == '/home/jenkins-ci/anistats-preparation/artifacts/anistats-' + revision + '.tar.gz'
+    - ansible.builtin.tempfile:
+        state: directory
+        path: /var/tmp
+        prefix: anistats-ci-
+      register: context
+    - block:
+        - ansible.builtin.unarchive:
+            src: '{{ archive }}'
+            dest: '{{ context.path }}'
+        - name: Build immutable candidate
+          ansible.builtin.command:
+            argv: [docker, build, --label, 'org.opencontainers.image.revision={{ revision }}', -t, 'anistats-ci:{{ revision }}-{{ run_id }}', '{{ context.path }}']
+          async: 1200
+          poll: 10
+        - name: Execute Linux backend frontend and performance verification
+          ansible.builtin.command:
+            argv: [docker, build, --target, verify, -t, 'anistats-checks:{{ revision }}-{{ run_id }}', '{{ context.path }}']
+          async: 1200
+          poll: 10
+        - name: Create stopped report-only container
+          ansible.builtin.command:
+            argv: [docker, create, --name, 'anistats-reports-{{ run_id }}', 'anistats-checks:{{ revision }}-{{ run_id }}']
+        - ansible.builtin.command:
+            argv: [docker, cp, 'anistats-reports-{{ run_id }}:/reports', '{{ context.path }}/reports']
+        - ansible.builtin.fetch:
+            src: '{{ context.path }}/reports/{{ item }}.xml'
+            dest: '/home/jenkins-ci/anistats-preparation/artifacts/{{ run_id }}/{{ item }}.xml'
+            flat: true
+          loop: [backend, frontend, performance]
+        - ansible.builtin.command:
+            argv: [docker, image, inspect, --format, '{{ "{{.Id}}" }}', 'anistats-ci:{{ revision }}-{{ run_id }}']
+          register: image
+          changed_when: false
+        - ansible.builtin.copy:
+            dest: '{{ context.path }}/release.json'
+            mode: '0600'
+            content: '{{ {"revision":revision,"image":"anistats-ci:"+revision+"-"+run_id,"imageId":image.stdout,"linuxTests":"PASS","deployed":false} | to_nice_json }}'
+        - ansible.builtin.fetch:
+            src: '{{ context.path }}/release.json'
+            dest: '/home/jenkins-ci/anistats-preparation/artifacts/{{ run_id }}/release.json'
+            flat: true
+      always:
+        - ansible.builtin.command:
+            argv: [docker, rm, 'anistats-reports-{{ run_id }}']
+          failed_when: false
+          changed_when: false
+        - ansible.builtin.file:
+            path: '{{ context.path }}'
+            state: absent

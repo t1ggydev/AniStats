@@ -1,0 +1,21 @@
+services:
+  web:
+    image: ${ANISTATS_IMAGE:?Use an immutable tested image tag}
+    init: true
+    restart: unless-stopped
+    env_file: stage.env
+    ports:
+      - "127.0.0.1:3300:3000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1536m
+    cpus: 2
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

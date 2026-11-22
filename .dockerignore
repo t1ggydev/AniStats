@@ -1,0 +1,13 @@
+.git
+node_modules
+.nuxt
+.output
+.data
+.env*
+!.env.example
+*.db
+*.db-*
+*.log
+backups
+artifacts
+screenshots

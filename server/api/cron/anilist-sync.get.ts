@@ -1,6 +1,5 @@
 import { createError, defineEventHandler, getHeader } from "h3";
-import { runHourlyAniListSync } from "../../../services/anilist/hourlySync.service";
-import { prisma } from "../../../utils/prisma";
+import { runFullAniListSync } from "../../../services/anilist/fullSync.service";
 
 export default defineEventHandler(async (event) => {
   const cronSecret = process.env.CRON_SECRET;
@@ -10,19 +9,8 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
     }
   } else {
-    console.warn("[cron] CRON_SECRET is not set – endpoint is unprotected");
+    throw createError({ statusCode: 503, statusMessage: "Scheduled sync is not configured" });
   }
 
-  const running = await prisma.syncState.findUnique({
-    where: { key: "anilist_sync_running" },
-  });
-
-  if (running?.value === "1") {
-    throw createError({
-      statusCode: 409,
-      statusMessage: "AniList sync already running",
-    });
-  }
-
-  return runHourlyAniListSync();
+  return runFullAniListSync({ reuseRecent: true });
 });

@@ -39,7 +39,11 @@ It combines clean visual dashboards with scheduled background sync and private a
 - Nitro server routes
 - Prisma Client
 - AniList OAuth and GraphQL APIs
-- Vercel Cron for scheduled sync
+- PostgreSQL in self-hosted Supabase for the migration candidate
+- An authenticated sync trigger, with deployment scheduling documented separately
+
+The production service still runs on Vercel/Turso until explicit cutover approval.
+See [self-hosting and migration status](docs/SELF-HOSTING.md) before deploying this branch.
 
 ## Production Endpoints
 
@@ -54,11 +58,11 @@ Most analytics routes are intentionally private and require authentication.
 ## Required Environment Variables
 
 - `NUXT_PUBLIC_SITE_URL`
-- `ANILIST_CLIENT_ID`
-- `ANILIST_CLIENT_SECRET`
-- `ANILIST_REDIRECT_URI`
-- `DATABASE_URL`
-- `DATABASE_AUTH_TOKEN`
+- `NUXT_ANILIST_CLIENT_ID` (runtime; legacy `ANILIST_CLIENT_ID` is build-time fallback)
+- `NUXT_ANILIST_CLIENT_SECRET` (runtime; legacy `ANILIST_CLIENT_SECRET` is build-time fallback)
+- `NUXT_ANILIST_REDIRECT_URI` (runtime; legacy `ANILIST_REDIRECT_URI` is build-time fallback)
+- `DATABASE_URL` (PostgreSQL in this branch)
+- `CRON_SECRET` (required to run scheduled sync)
 - `DEBUG` (optional)
 
 ## Release Workflow

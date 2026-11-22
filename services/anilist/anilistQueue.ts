@@ -1,8 +1,8 @@
 let lastRequestAt = 0;
 let queueTail: Promise<void> = Promise.resolve();
 
-// AniList erlaubt ca. 90 req/min -> wir nehmen safe ~1 req / 1.2s
-const MIN_DELAY_MS = 1200;
+// Current provider limit is 30/minute; leave headroom for the shared queue.
+const MIN_DELAY_MS = 2200;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

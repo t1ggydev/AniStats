@@ -1,0 +1,41 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const discover = vi.hoisted(() => vi.fn());
+const sync = vi.hoisted(() => vi.fn());
+const checkpoint = vi.hoisted(() => vi.fn());
+vi.mock('../services/anilist/discoverNewAnime', () => ({ discoverNewAnime: discover }));
+vi.mock('../services/anilist/syncAnime', () => ({ syncAnime: sync }));
+vi.mock('../services/anilist/syncLock', () => ({ withAniListSyncLock: (work: any) => work(() => {}) }));
+vi.mock('../utils/prisma', () => ({ prisma: { syncState: { findUnique: async () => ({ value: '100' }), upsert: checkpoint } } }));
+import { runHourlyAniListSync } from '../services/anilist/hourlySync.service';
+describe('incremental sync pagination', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+  it('continues after an unchanged page and saves the newest completed checkpoint', async () => {
+    discover.mockResolvedValueOnce([{ id: 1, updatedAt: 300 }])
+      .mockResolvedValueOnce([{ id: 2, updatedAt: 200 }, { id: 3, updatedAt: 90 }]);
+    sync.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const out = await runHourlyAniListSync();
+    expect(out).toMatchObject({ checked: 2, written: 1, syncedUntil: 299 });
+    expect(sync.mock.calls.map(row => row[0])).toEqual([1, 2]);
+    expect(checkpoint).toHaveBeenCalledWith(expect.objectContaining({ update: { value: '299' } }));
+  });
+  it('keeps the checkpoint unchanged when a page fails', async () => {
+    discover.mockResolvedValueOnce([{ id: 1, updatedAt: 300 }]).mockRejectedValueOnce(new Error('network unavailable'));
+    sync.mockResolvedValueOnce(true);
+    await expect(runHourlyAniListSync()).rejects.toThrow('network unavailable');
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
+  it('bounds a real staging test without advancing the full-sync checkpoint', async () => {
+    discover.mockResolvedValueOnce([{ id: 1, updatedAt: 300 }, { id: 2, updatedAt: 200 }]);
+    sync.mockResolvedValueOnce(true);
+    const result = await runHourlyAniListSync({ maxItems: 1 });
+    expect(result).toMatchObject({ checked: 1, partial: true, syncedUntil: 100, observedUntil: 300 });
+    expect(checkpoint).not.toHaveBeenCalled();
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+  it('replays timestamp ties at an imported checkpoint without moving it backwards', async () => {
+    discover.mockResolvedValueOnce([{id:1,updatedAt:100},{id:2,updatedAt:99}]);sync.mockResolvedValue(false);
+    const result=await runHourlyAniListSync();
+    expect(result).toMatchObject({checked:1,written:0,syncedUntil:100});
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
+});

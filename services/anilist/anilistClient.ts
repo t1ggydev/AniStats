@@ -9,15 +9,16 @@ async function performAniListRequest<T>(
   variables: Record<string, unknown>,
   attempt: number,
 ): Promise<T> {
-  return enqueueAniList(async () => {
-    const res = await fetch("https://graphql.anilist.co", {
+    // Queue only the HTTP attempt. Retrying inside the occupied queue deadlocks.
+    const res = await enqueueAniList(() => fetch("https://graphql.anilist.co", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
       body: JSON.stringify({ query, variables }),
-    });
+      signal: AbortSignal.timeout(30000),
+    }));
 
     if (res.status === 429) {
       if (attempt >= 5) {
@@ -25,8 +26,9 @@ async function performAniListRequest<T>(
       }
 
       const retryAfter = res.headers.get("retry-after");
-      const waitMs = retryAfter
-        ? Number(retryAfter) * 1000
+      const parsed = retryAfter === null ? NaN : Number(retryAfter);
+      const waitMs = Number.isFinite(parsed) && parsed >= 0
+        ? Math.min(parsed * 1000, 300000)
         : 1000 * Math.pow(2, attempt);
 
       console.warn(`[AniList] 429 - retry ${attempt}/5 in ${waitMs}ms`);
@@ -55,7 +57,6 @@ async function performAniListRequest<T>(
     }
 
     return json.data as T;
-  });
 }
 
 export async function anilistRequest<T>(

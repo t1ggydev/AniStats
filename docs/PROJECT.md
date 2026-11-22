@@ -1,0 +1,29 @@
+# AniStats self-hosting
+
+Owner-approved production cutover completed on 2026-11-22 using the existing candidate in place. Vercel/Turso remain a retained cloud fallback.
+Preparation branch: `codex/anistats-self-hosting`. Reference: [migration runbook](SELF-HOSTING.md).
+
+## Tasks
+
+- [x] Prepare isolated PostgreSQL migration and private self-hosted candidate (PR #115).
+  - [x] Inspect the actual Vercel production commit, domains and encrypted environment.
+  - [x] Export Turso with a read-only transaction; verify a full SQLite restore and encrypted archive round trip.
+  - [x] Import seven tables into a separate Supabase PostgreSQL database and compare every transformed value.
+  - [x] Create a consistent PostgreSQL dump and prove restoration into an empty disposable database.
+  - [x] Adapt Prisma, private runtime, guarded cron authentication and process-owned sync exclusion.
+  - [x] Fix incremental update sorting, premature pagination termination and rate-limit retry queue deadlock.
+  - [x] Complete final Linux candidate checks after the sync fixes and private HTTP smoke tests.
+- [x] Prepare Jenkins, operational monitoring, consistent recurring backups and bounded AniList acceptance (PR #115).
+  - [x] Real Jenkins Linux build, JUnit/release artifacts and repository-scoped GitHub commit status.
+  - [x] Private application/database/container/request metrics and tested native Grafana alerts.
+  - [x] Daily consistent PostgreSQL dumps, weekly full restore proof and encrypted recovery configuration copies.
+  - [x] Owner confirmed separate AniList test login, dashboard, history and recommendations.
+  - [x] Bounded live sync processed three entries without advancing the global checkpoint.
+  - [x] Process generation/schema isolation prevents mixing histogram versions across restarts.
+- [x] Accept full AniList catch-up and monitored native daily scheduler (PR #115).
+  - [x] Batched date-partitioned processing, durable cursor, source deduplication and heartbeat-protected session lock.
+  - [x] Preserve vercel.json schedule at 03:00 UTC; keep cloud production unchanged.
+  - [x] Separate job result/freshness metrics and offline-tested cron failure/overdue alarms.
+  - [x] Full run and actual native daily job each checked 22,571 anime; 30 complete source/database samples match; the post-catch-up dump restores all eight tables.
+- [x] Owner-approved in-place production conversion and authoritative DNS cutover; retain Vercel/Turso rollback, with encrypted pre-cutover source/configuration captures.
+- [ ] Retire Turso only after a stable production observation period and verified recovery copy, with explicit owner approval.
