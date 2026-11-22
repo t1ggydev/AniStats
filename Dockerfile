@@ -16,6 +16,12 @@ RUN mkdir /reports && npx nuxt prepare \
     && npm run test:perf -- --reporter=junit --outputFile=/reports/performance.xml
 
 FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS runtime
+# Runtime needs Node only; npm remains in the build stages.
+# Remove its unused attack surface and apply supported Debian security updates.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
 WORKDIR /app
 COPY --from=build --chown=node:node /app/.output ./.output
