@@ -1,13 +1,11 @@
 {
-    "git": {
-        "deploymentEnabled": {
-            "codex/anistats-self-hosting": false
-        }
-    },
-    "crons": [
-        {
-            "path": "/api/cron/anilist-sync",
-            "schedule": "0 3 * * *"
-        }
-    ]
+  "git": {
+    "deploymentEnabled": false
+  },
+  "crons": [
+    {
+      "path": "/api/cron/anilist-sync",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }
