@@ -81,7 +81,10 @@ Rate-limit retries run outside the occupied request queue, with bounded delay an
 
 These fixes are tested with injected failures, concurrent requests, unchanged pages, checkpoint failures and simulated HTTP 429 responses.
 The bounded live test processed three entries into PostgreSQL successfully, without advancing the global checkpoint. Metadata/genres/tags/relations now commit together in one transaction and changed entries are counted correctly.
-No full catalog refresh has been started against either production or staging. The initial catch-up must be budgeted and observed against AniList's rate limits before production acceptance.
+The private full catch-up uses batches of 50 complete records and recursively partitions start dates to stay below AniList's 5,000-entry page boundary. Unknown dates are included. The shared queue leaves headroom under the observed 30-requests/minute provider limit.
+A persisted `anilist_full_sync_progress` cursor resumes an interrupted page; hashes make replay idempotent. Duplicate provider genres, tags and identical relation edges are normalized before the transaction, while distinct relation types are retained. Global genres and tags are refreshed as part of completion.
+A dedicated lock heartbeat prevents the private database proxy from closing an idle lock session. The global checkpoint advances only after every partition completes. AniList periodically updates large blocks of records at the same timestamp; the daily cron therefore uses this batched date-partitioned pass rather than a per-record incremental tail that can hit the 5,000-entry boundary. Unchanged hashes skip database rewrites. The legacy incremental helper remains available for bounded regression checks, with timestamp overlap and boundary-tie replay.
+Actual full-run, restart/resume, backup and cron acceptance evidence is retained under `root-infra/work/anistats-*` and in the central ITFlow AniStats document. Production Vercel/Turso remains unchanged.
 
 ## Jenkins and operational monitoring
 
@@ -89,11 +92,19 @@ The existing dedicated Jenkins agent runs job `AniStats-Preparation`. It pins th
 The real GitHub status is `jenkins/anistats`, authenticated with a fine-grained token restricted to this repository. Failure to publish the status marks the build unstable.
 The pipeline polls this preparation branch, retains 20 build records and has no deployment/migration/DNS step. Stage promotion is a separate explicit Ansible operation using the tested image ID/tag.
 
-Grafana dashboard `anistats-stage` is in folder `pve01`: application and database readiness, requests/second, HTTP status classes, 5xx error ratio, p95 latency, individual Docker CPU/RAM, database connections/size, backup/restore freshness and Jenkins results.
+Grafana dashboard `anistats-stage` is in folder `pve01`: application and database readiness, requests/second, HTTP status classes, 5xx error ratio, p90/p95 latency, individual Docker CPU/RAM, database connections/size, backup/restore freshness and Jenkins results.
 Metrics contain no user IDs, IP addresses, tokens, cookies or request URLs. Health probes and metrics scraping are excluded from HTTP request instrumentation. These are server request measurements, not browser visitor analytics.
 Histogram samples carry process-generation and schema labels; quantile queries select a compatible bucket schema and show no latency value when there are no observations.
 Collectors run every 30 seconds through existing node exporters; no parallel monitoring platform is introduced.
 Native Grafana warnings use the existing Telegram contact point, persistence windows and 24-hour repeats. Missing collectors, service/database failures, failed/stale backups, stale restore/config backups and CI failures are monitored. Failure scenarios are tested offline without sending fake alerts.
+
+## Daily AniList scheduler
+
+`vercel.json` defines `GET /api/cron/anilist-sync` at `0 3 * * *`: **03:00 UTC**, not 03:00 local time. `anistats-sync.yml` preserves that schedule using native timer `anistats-stage-cron-sync.timer` with an explicit UTC calendar and persistent catch-up after downtime.
+The endpoint now performs the resumable batched catalog pass. A duplicate invocation within five minutes can reuse a completed pass only after checking that AniList reports no newer update timestamp. This avoids redundant full work immediately after manual acceptance. The existing Vercel job is unchanged and targets the separate Turso source. The native stage job targets only `anistats_stage`; it does not create a second scheduler for the same database.
+The root-only runner reads the independent bearer secret from the container environment, uses a single-process file lock to avoid overlapping native full/daily jobs and records attempts, success, running state and duration without secrets. Long requests use native Node HTTP without a short fetch header timeout.
+The private full-run service is `anistats-stage-full-sync.service`. Only stage enables its guarded endpoint; disable `ANISTATS_ENABLE_SYNC_TEST` in production. Public reverse-proxy routing must deny `/api/internal/` and `/api/cron/` during production preparation.
+Grafana separately shows the latest cron success and duration, plus full-run progress. Native alerts cover failed cron runs and success older than 30 hours, with persistence windows and 24-hour repeats. Background jobs and probes are excluded from interactive request latency.
 
 ## Recurring backups
 
@@ -106,12 +117,19 @@ Native Grafana warnings use the existing Telegram contact point, persistence win
 
 The Ansible Vault decryption key is deliberately not included alongside encrypted recovery inputs; use the established infrastructure recovery access. No current secret values are stored in repository documentation or Jenkins artifacts.
 
-## Remaining acceptance and cutover gates
+## Accepted private data refresh (2026-11-22)
 
-1. Isolated login and bounded sync acceptance passed; perform and observe the full initial catch-up before production acceptance. Checkpoint progression is deliberately not claimed by the bounded test.
+The native full refresh and the real authenticated daily cron both completed successfully, each checking **22,571 anime**. The daily pass took approximately 18 minutes under the observed provider limit. The raw Anime table also retains relation-target placeholders; its row count is intentionally larger than the provider catalog count.
+Thirty deterministic samples match all stored business fields, genres, tags, relations and normalized source hashes against AniList. The duplicate-genre regression stores Fantasy exactly once for the affected provider record. The real container restart resumed the same durable cursor, and the sync lock/status cleared after completion.
+A fresh post-cron custom-format dump was restored into an isolated disposable database and all eight tables matched. Native collectors are current, seven offline alert scenarios pass, and p90/p95 produce finite values from real HTTP smoke requests without Prometheus warnings. Dashboard panels use six aligned sections and fixed stat text sizes.
+The tested running application is the immutable Jenkins 10 candidate from code revision `f4b991bec221bfdb7eebf662936cfb197330940d`; subsequent documentation-only commits do not require a runtime rollout.
+
+## Production cutover gates
+
+1. Private login, full data refresh, actual daily cron, restart/resume, complete sampled data comparison and post-catch-up restore acceptance passed. Keep their evidence with the release.
 2. Jenkins, immutable artifacts, request/service/container metrics and recurring backup/restore checks are installed. Preserve their explicit stage/production separation during promotion.
 3. Obtain explicit owner approval for production cutover.
-4. Capture a fresh read-only source snapshot and encrypted rollback configuration. Prepare a separate production database/role; do not silently promote the stale test copy.
+4. Capture a fresh read-only Turso source archive and encrypted rollback configuration. This schema contains catalog/cache tables and sync state, not user accounts. Seed the separate production database/role from the verified caught-up PostgreSQL catalog; do not overwrite it with the older Turso checkpoint. Review any source changes before promotion.
 5. Verify initial data, constraints, sequences and consistent backup/restore of the final production copy.
 6. Prepare reverse proxy/TLS and blocked public cron routing; verify the existing AniList callback on the unchanged canonical hostname.
 7. Coordinate the old Vercel scheduler with the new single scheduler. Never leave two active schedulers writing the same destination.

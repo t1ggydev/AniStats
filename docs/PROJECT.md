@@ -20,5 +20,10 @@ Preparation branch: `codex/anistats-self-hosting`. Reference: [migration runbook
   - [x] Owner confirmed separate AniList test login, dashboard, history and recommendations.
   - [x] Bounded live sync processed three entries without advancing the global checkpoint.
   - [x] Process generation/schema isolation prevents mixing histogram versions across restarts.
+- [x] Accept full AniList catch-up and monitored native daily scheduler (PR #115).
+  - [x] Batched date-partitioned processing, durable cursor, source deduplication and heartbeat-protected session lock.
+  - [x] Preserve vercel.json schedule at 03:00 UTC; keep cloud production unchanged.
+  - [x] Separate job result/freshness metrics and offline-tested cron failure/overdue alarms.
+  - [x] Full run and actual native daily job each checked 22,571 anime; 30 complete source/database samples match; the post-catch-up dump restores all eight tables.
 - [ ] Cut over `anistats.kluge-it.tech` only after explicit owner approval and fresh data copy; retain Vercel and Turso rollback.
 - [ ] Retire Turso only after a stable production observation period and verified recovery copy, with explicit owner approval.
