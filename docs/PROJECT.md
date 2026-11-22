@@ -1,11 +1,11 @@
 # AniStats self-hosting
 
-Production stays on Vercel/Turso until migration acceptance and the owner's explicit cutover approval.
+Owner-approved production cutover completed on 2026-11-22 using the existing candidate in place. Vercel/Turso remain a retained cloud fallback.
 Preparation branch: `codex/anistats-self-hosting`. Reference: [migration runbook](SELF-HOSTING.md).
 
 ## Tasks
 
-- [x] Prepare isolated PostgreSQL migration and private self-hosted candidate (PR #115, draft; not merged).
+- [x] Prepare isolated PostgreSQL migration and private self-hosted candidate (PR #115).
   - [x] Inspect the actual Vercel production commit, domains and encrypted environment.
   - [x] Export Turso with a read-only transaction; verify a full SQLite restore and encrypted archive round trip.
   - [x] Import seven tables into a separate Supabase PostgreSQL database and compare every transformed value.
@@ -25,5 +25,5 @@ Preparation branch: `codex/anistats-self-hosting`. Reference: [migration runbook
   - [x] Preserve vercel.json schedule at 03:00 UTC; keep cloud production unchanged.
   - [x] Separate job result/freshness metrics and offline-tested cron failure/overdue alarms.
   - [x] Full run and actual native daily job each checked 22,571 anime; 30 complete source/database samples match; the post-catch-up dump restores all eight tables.
-- [ ] Cut over `anistats.kluge-it.tech` only after explicit owner approval and fresh data copy; retain Vercel and Turso rollback.
+- [x] Owner-approved in-place production conversion and authoritative DNS cutover; retain Vercel/Turso rollback, with encrypted pre-cutover source/configuration captures.
 - [ ] Retire Turso only after a stable production observation period and verified recovery copy, with explicit owner approval.

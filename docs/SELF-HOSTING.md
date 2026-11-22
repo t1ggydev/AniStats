@@ -124,17 +124,24 @@ Thirty deterministic samples match all stored business fields, genres, tags, rel
 A fresh post-cron custom-format dump was restored into an isolated disposable database and all eight tables matched. Native collectors are current, seven offline alert scenarios pass, and p90/p95 produce finite values from real HTTP smoke requests without Prometheus warnings. Dashboard panels use six aligned sections and fixed stat text sizes.
 The tested running application is the immutable Jenkins 10 candidate from code revision `f4b991bec221bfdb7eebf662936cfb197330940d`; subsequent documentation-only commits do not require a runtime rollout.
 
-## Production cutover gates
+## Production operation (2026-11-22)
 
-1. Private login, full data refresh, actual daily cron, restart/resume, complete sampled data comparison and post-catch-up restore acceptance passed. Keep their evidence with the release.
-2. Jenkins, immutable artifacts, request/service/container metrics and recurring backup/restore checks are installed. Preserve their explicit stage/production separation during promotion.
-3. Obtain explicit owner approval for production cutover.
-4. Capture a fresh read-only Turso source archive and encrypted rollback configuration. This schema contains catalog/cache tables and sync state, not user accounts. Seed the separate production database/role from the verified caught-up PostgreSQL catalog; do not overwrite it with the older Turso checkpoint. Review any source changes before promotion.
-5. Verify initial data, constraints, sequences and consistent backup/restore of the final production copy.
-6. Prepare reverse proxy/TLS and blocked public cron routing; verify the existing AniList callback on the unchanged canonical hostname.
-7. Coordinate the old Vercel scheduler with the new single scheduler. Never leave two active schedulers writing the same destination.
-8. Change only the approved DNS/routing, test login, private analytics and sync, and verify monitoring/backups.
-9. Roll back DNS to the captured Vercel target and fence the new scheduler if acceptance fails. Retain the untouched source Turso database and Vercel deployment.
-10. Cancel Turso only after owner-approved retirement; account billing and database deletion are not part of preparation.
+The owner approved converting the existing candidate in place and switching DNS. There is exactly one active AniStats web container (`anistats-web-1`) and one private database proxy (`anistats-proxy-postgres-proxy-1`). The caught-up database was renamed to `anistats`, retaining PostgreSQL OID 18523 and its data; no parallel production database was seeded.
 
-The backup restore test and Linux build are technical preparation evidence; they do not replace OAuth acceptance or authorize going live.
+- Canonical URL: https://anistats.kluge-it.tech. Authoritative DNS A: 212.83.61.52, DNS only, TTL 300. `beta.anistats.kluge-it.tech` aliases the canonical hostname and redirects with HTTPS 308.
+- Runtime directory: `/srv/anistats`; active secrets: `/srv/anistats/runtime.env`, root-only. Previous stage paths and unit names above describe preparation history, not an additional active environment.
+- Production uses the existing production AniList client and unchanged canonical callback from encrypted Vercel environment settings. Internal sync-test endpoints are disabled. The production OAuth redirect was verified; a real owner browser login remains a separate end-to-end acceptance check.
+- Edge TLS covers both names. Public `/api/internal` and `/api/cron` routes return 404. The web service is reachable only through private bindings; direct public application ports remain closed.
+- Daily native cron: `anistats-cron-sync.timer`, 03:00 UTC, authenticates locally. `anistats-full-sync.service` also uses the production authenticated cron route. Neither job requires exposing cron publicly.
+- Backup, restore, app/database collector unit names now start `anistats-`, with no `stage` component. Recovery archives live below `/srv/anistats`. The configuration backup retains its existing `anistats-configuration-backup` name.
+- Existing Grafana dashboard UID `anistats-stage` is deliberately preserved for bookmarks; its title, selectors and metrics use production. Six aligned sections contain application, HTTP p90/p95, containers, PostgreSQL, build/TLS/backup, and sync status. Fifteen native rules pass nine offline alert scenarios, with 24-hour repeats. Existing unrelated monitoring was preserved.
+- TLS renewal runs on the Ansible controller using scoped DNS credentials, validates the certificate/key/hostnames, deploys to edge and validates nginx before reload. Expiry and renewal outcome are monitored.
+- Active immutable application artifact remains Jenkins 10 / revision `f4b991bec221bfdb7eebf662936cfb197330940d`. Later documentation and Vercel deployment-fencing changes do not modify runtime code.
+
+### Recovery and retained cloud fallback
+
+The encrypted central recovery directory holds the pre-cutover DNS records, Vercel settings, infrastructure configuration, fresh read-only Turso snapshot, canonical database credentials and runtime environment. Never place decrypted credentials in repository documentation.
+
+Vercel Git deployments are disabled and its ignore-build command fences new deployments; `vercel.json` also disables Git deployments. The old deployed Vercel application and Turso data are retained as a fallback. Its legacy scheduler targets Turso, not the new PostgreSQL destination. Do not cancel subscriptions or delete cloud data as part of this cutover.
+
+For rollback, stop the new native sync timer, restore the two captured DNS records with the guarded DNS rollback helper, and verify the retained Vercel application. PostgreSQL remains intact for investigation. Restoring older Turso data can lose post-cutover catalog updates; assess the data difference before resuming normal operation. The retained cloud deployment is an emergency fallback, not a second self-hosted instance.
