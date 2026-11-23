@@ -41,7 +41,7 @@
   },
   "overrides": {
     "@prisma/config": {
-      "effect": "3.22.1"
+      "effect": "3.22.5"
     }
   },
   "devDependencies": {
