@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS build
+FROM node:24-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530 AS build
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
@@ -15,7 +15,7 @@ RUN mkdir /reports && npx nuxt prepare \
     && npm run test:frontend:run -- --reporter=default --reporter=junit --outputFile=/reports/frontend.xml \
     && npm run test:perf -- --reporter=junit --outputFile=/reports/performance.xml
 
-FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS runtime
+FROM node:24-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530 AS runtime
 # Runtime needs Node only; npm remains in the build stages.
 # Remove its unused attack surface and apply supported Debian security updates.
 RUN apt-get update \
